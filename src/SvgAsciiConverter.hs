@@ -2,13 +2,35 @@ module SvgAsciiConverter
 ( Coordinate(Coordinate)
 , Painter(Painter)
 , AsciiPicture(AsciiPicture)
+, SvgElement(Rectangle)
+, parseSvg
 , drawrectangle 
 , drawsegmentrow
 ) where
 
+import Text.ParserCombinators.Parsec
+
 data Coordinate = Coordinate Int Int
 data Painter = Painter Char
 data AsciiPicture = AsciiPicture [[Char]]
+data SvgElement = Rectangle deriving (Show)
+
+text :: GenParser Char st String
+text = many $ noneOf "<>"
+
+xmlheader :: GenParser Char st String
+xmlheader = do
+    string "<?"
+    many $ noneOf "<>?"
+    string "?>"
+
+svgfile :: GenParser Char st [SvgElement]
+svgfile = do
+    xmlheader
+    return []
+
+parseSvg :: String -> Either ParseError [SvgElement]
+parseSvg file = parse svgfile "(unkown)" file
 
 drawrectangle :: Coordinate -> Coordinate -> Painter -> AsciiPicture -> AsciiPicture
 drawrectangle a b p (AsciiPicture rows) = AsciiPicture $ untouchedrows1 ++ paintedrows ++ untouchedrows2 

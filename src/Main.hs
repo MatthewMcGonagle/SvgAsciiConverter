@@ -1,9 +1,15 @@
 module Main where
 
 import SvgAsciiConverter
+import System.IO
 
 main :: IO ()
 main = do
+  handle <- openFile "example.svg" ReadMode
+  contents <- hGetContents handle
+  let svgelems = parseSvg contents
+  putStrLn "svgelems = "
+  print svgelems
   let teststring = take 10 $ repeat '-'
       paintedstring = drawsegmentrow 2 6 (Painter '*') teststring
       start = Coordinate 1 2
@@ -16,3 +22,5 @@ main = do
   putStrLn paintedstring 
   putStrLn "The painting"
   mapM_ putStrLn painting
+
+  hClose handle
