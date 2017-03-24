@@ -13,9 +13,10 @@ main = do
   let teststring = take 10 $ repeat '-'
       paintedstring = drawsegmentrow 2 6 (Painter '*') teststring
       start = Coordinate 1 2
-      finish = Coordinate 4 5
+      dim = Dimensions 3 4
+      myrect = Rectangle start dim
       canvas = AsciiPicture (take 10 $ repeat teststring)
-      (AsciiPicture painting) = drawrectangle start finish (Painter '*') canvas
+      (AsciiPicture painting) = drawrectangle myrect (Painter '*') canvas
   putStrLn "The test string"
   putStrLn teststring
   putStrLn "The painted row"
