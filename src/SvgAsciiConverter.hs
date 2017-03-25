@@ -6,6 +6,8 @@ module SvgAsciiConverter
 , AsciiPicture(AsciiPicture)
 , SvgElement(ViewBox, SvgRectangle)
 , parseSvg
+, rectchange
+, viewboxtorect
 , drawrectangle 
 , drawsegmentrow
 ) where
@@ -117,6 +119,24 @@ svgfile = do
 
 parseSvg :: String -> Either ParseError [SvgElement]
 parseSvg file = parse svgfile "(unkown)" file
+
+-----------------------------------------------------------
+
+rectchange :: (Rectangle Float) -> (Rectangle Int) -> (Rectangle Float) -> (Rectangle Int) 
+rectchange coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') 
+    where (Rectangle (Coordinate oi oj) (Dimensions dimi dimj) ) = coord
+          (Rectangle (Coordinate oi' oj') (Dimensions dimi' dimj') ) = coord'
+          (Rectangle (Coordinate i j) (Dimensions height width)) = rectangle
+          iscale = (fromIntegral dimi') / dimi
+          jscale = (fromIntegral dimj') / dimj
+          height' = floor $ height * iscale 
+          width' = floor $ width * jscale 
+          i' = floor $ (fromIntegral oi') + (i - oi) * iscale
+          j' = floor $ (fromIntegral oj') + (j - oj) * jscale 
+
+viewboxtorect :: SvgElement -> Rectangle Float 
+viewboxtorect (ViewBox (Coordinate i1 j1) (Coordinate i2 j2)) = 
+    Rectangle (Coordinate i1 j1) (Dimensions (i2 - i1) (j2 - j1)) 
 
 drawrectangle :: (Rectangle Int) -> Painter -> AsciiPicture -> AsciiPicture
 drawrectangle (Rectangle corner dim) p (AsciiPicture rows) = AsciiPicture $ untouchedrows1 ++ paintedrows ++ untouchedrows2 

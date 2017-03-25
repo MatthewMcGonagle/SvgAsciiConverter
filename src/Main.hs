@@ -10,6 +10,10 @@ main = do
   let svgelems = parseSvg contents
   putStrLn "svgelems = "
   print svgelems
+  let rectlist = drop 1 `fmap` svgelems
+      coord = head `fmap` svgelems
+  putStrLn "After dropping first element, rectlist= "
+  print rectlist 
   let teststring = take 10 $ repeat '-'
       paintedstring = drawsegmentrow 2 6 (Painter '*') teststring
       start = Coordinate 1 2
