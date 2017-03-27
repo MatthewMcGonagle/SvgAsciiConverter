@@ -7,6 +7,7 @@ module SvgAsciiConverter
 , SvgElement(ViewBox, SvgRectangle)
 , parseSvg
 , rectchange
+, svgrecttorect
 , viewboxtorect
 , drawrectangle 
 , drawsegmentrow
@@ -137,6 +138,9 @@ rectchange coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions hei
 viewboxtorect :: SvgElement -> Rectangle Float 
 viewboxtorect (ViewBox (Coordinate i1 j1) (Coordinate i2 j2)) = 
     Rectangle (Coordinate i1 j1) (Dimensions (i2 - i1) (j2 - j1)) 
+
+svgrecttorect:: SvgElement -> Rectangle Float
+svgrecttorect (SvgRectangle r) = r
 
 drawrectangle :: (Rectangle Int) -> Painter -> AsciiPicture -> AsciiPicture
 drawrectangle (Rectangle corner dim) p (AsciiPicture rows) = AsciiPicture $ untouchedrows1 ++ paintedrows ++ untouchedrows2 
