@@ -8,6 +8,9 @@ main :: IO ()
 main = do
   handle <- openFile "example.svg" ReadMode
   contents <- hGetContents handle
+  let xmltags = parseXml contents
+  putStrLn "The Xml tags are"
+  print xmltags
   let svgelems = parseSvg contents
   putStrLn "svgelems = "
   print svgelems
@@ -29,21 +32,8 @@ main = do
   print newrectlist
   let canvas' = AsciiPicture asciiarray
       asciiarray = take height' $ repeat asciirow
-      asciirow = take width' $ repeat '-'
+      asciirow = take width' $ repeat ' '
       (Right (AsciiPicture painting')) = foldl (\acc x -> drawrectangle x (Painter '*') acc) canvas' `fmap` newrectlist 
   mapM_ putStrLn painting'
-  let teststring = take 10 $ repeat '-'
-      paintedstring = drawsegmentrow 2 6 (Painter '*') teststring
-      start = Coordinate 1 2
-      dim = Dimensions 3 4
-      myrect = Rectangle start dim
-      canvas = AsciiPicture (take 10 $ repeat teststring)
-      (AsciiPicture painting) = drawrectangle myrect (Painter '*') canvas
-  putStrLn "The test string"
-  putStrLn teststring
-  putStrLn "The painted row"
-  putStrLn paintedstring 
-  putStrLn "The painting"
-  mapM_ putStrLn painting
-
+  
   hClose handle
