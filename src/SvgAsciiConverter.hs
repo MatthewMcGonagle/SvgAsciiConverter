@@ -5,6 +5,8 @@ module SvgAsciiConverter
 , Painter(Painter)
 , AsciiPicture(AsciiPicture)
 , SvgElement(ViewBox, SvgRectangle)
+, XmlParam(XmlParam)
+, XmlParamKey
 , XmlTag(XmlTag) 
 , parseXml
 , parseSvg
@@ -27,25 +29,33 @@ data SvgElement = ViewBox (Coordinate Float) (Coordinate Float)
                 | SvgRectangle (Rectangle Float) 
                 deriving (Show)
 
-data XmlTag = XmlTag String [XmlParam] [XmlTag] deriving (Show)
+data XmlDictValue = XmlDictParam String | XmlDictSub XmlDict
+data XmlDict = XmlDict (Map.Map String (Map.Map String XmlDictValue)) 
+data XmlTag t = XmlTag String t [XmlTag t] deriving (Show)
 data XmlParam = XmlParam String String deriving (Show)
+type XmlParamKey = (String, String)
 data XmlTagString = XmlTagString String [(String, String)]
 
-parseXml :: String -> Either ParseError [XmlTag] 
+instance Functor XmlTag where
+    fmap f (XmlTag name x []) = XmlTag name (f x) []
+    fmap f (XmlTag name x subs) = XmlTag name (f x) (map (fmap f) subs) 
+
+parseXml :: String -> Either ParseError [XmlTag [XmlParamKey]] 
 parseXml x = parse xmlfile "xmlfile" x
 
-xmlfile :: GenParser Char st [XmlTag]
+xmlfile :: GenParser Char st [XmlTag [XmlParamKey]]
 xmlfile = do
     spaces
     (try xmlheader) <?> "xmlheader"
     elements <- manyTill (between spaces spaces $ xmlelement "file") eof 
     return elements 
 
-xmlelement :: String -> GenParser Char st XmlTag
+xmlelement :: String -> GenParser Char st (XmlTag [XmlParamKey])
 xmlelement parent = do
     name <- xmlbegintag parent
     spaces
-    params <- manyTill (do {p <- xmltagparam; spaces; return p} )  (lookAhead $ oneOf "/>") 
+    params <- manyTill (do {p <- xmltagparam; spaces; return p} )  
+                       (lookAhead $ oneOf "/>") 
     let uninterestingtext = many (noneOf "<>") 
     slashorbracket <- oneOf "/>"
                       <?> "xmltagbegin slashorbracket, / or > for " ++ name
@@ -66,7 +76,7 @@ xmlbegintag parent = do
     try tagname 
         <?> "xmlbegintag name, parent is " ++ parent 
 
-xmltagparam :: GenParser Char st XmlParam 
+xmltagparam :: GenParser Char st XmlParamKey 
 xmltagparam = do
     let namestring = many1 $ noneOf (controlchars ++ " \n")
     name <- try namestring <?> "xmltagparam namestring" 
@@ -77,7 +87,7 @@ xmltagparam = do
     let valuestring = many $ noneOf "\""
     value <- try valuestring <?> "xmltagparam valuestring" 
     try (char '\"') <?> "xmltag last \""
-    return $ XmlParam name value 
+    return (name, value)
 
 xmltagend :: String -> GenParser Char st String
 xmltagend name = do

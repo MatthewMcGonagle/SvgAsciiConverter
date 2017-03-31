@@ -3,6 +3,7 @@ module Main where
 import SvgAsciiConverter
 import System.IO
 import Control.Monad
+import qualified Data.Map as Map
 
 main :: IO ()
 main = do
@@ -11,6 +12,12 @@ main = do
   let xmltags = parseXml contents
   putStrLn "The Xml tags are"
   print xmltags
+  let xmldict = do
+                results <- xmltags
+                return $ map (fmap Map.fromList)  results 
+  putStrLn "Parameters as dictionaries: "
+  print xmldict
+
   let svgelems = parseSvg contents
   putStrLn "svgelems = "
   print svgelems
