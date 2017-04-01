@@ -5,11 +5,11 @@ module SvgAsciiConverter
 , Painter(Painter)
 , AsciiPicture(AsciiPicture)
 , SvgElement(ViewBox, SvgRectangle)
-, XmlParam(XmlParam)
 , XmlParamKey
 , XmlTag(XmlTag) 
 , parseXml
 , parseSvg
+, mapToRectangle
 , rectchange
 , svgrecttorect
 , viewboxtorect
@@ -29,68 +29,64 @@ data SvgElement = ViewBox (Coordinate Float) (Coordinate Float)
                 | SvgRectangle (Rectangle Float) 
                 deriving (Show)
 
-data XmlDictValue = XmlDictParam String | XmlDictSub XmlDict
-data XmlDict = XmlDict (Map.Map String (Map.Map String XmlDictValue)) 
-data XmlTag t = XmlTag String t [XmlTag t] deriving (Show)
-data XmlParam = XmlParam String String deriving (Show)
+data XmlTag paramType = XmlTag String paramType [XmlTag paramType] deriving (Show)
 type XmlParamKey = (String, String)
-data XmlTagString = XmlTagString String [(String, String)]
 
 instance Functor XmlTag where
     fmap f (XmlTag name x []) = XmlTag name (f x) []
     fmap f (XmlTag name x subs) = XmlTag name (f x) (map (fmap f) subs) 
 
 parseXml :: String -> Either ParseError [XmlTag [XmlParamKey]] 
-parseXml x = parse xmlfile "xmlfile" x
+parseXml x = parse xmlFile "xmlfile" x
 
-xmlfile :: GenParser Char st [XmlTag [XmlParamKey]]
-xmlfile = do
+xmlFile :: GenParser Char st [XmlTag [XmlParamKey]]
+xmlFile = do
     spaces
     (try xmlheader) <?> "xmlheader"
-    elements <- manyTill (between spaces spaces $ xmlelement "file") eof 
+    elements <- manyTill (between spaces spaces $ xmlElement "file") eof 
     return elements 
 
-xmlelement :: String -> GenParser Char st (XmlTag [XmlParamKey])
-xmlelement parent = do
-    name <- xmlbegintag parent
+xmlElement :: String -> GenParser Char st (XmlTag [XmlParamKey])
+xmlElement parent = do
+    name <- xmlBeginTag parent
     spaces
-    params <- manyTill (do {p <- xmltagparam; spaces; return p} )  
+    params <- manyTill (do {p <- xmlTagParam; spaces; return p} )  
                        (lookAhead $ oneOf "/>") 
-    let uninterestingtext = many (noneOf "<>") 
-    slashorbracket <- oneOf "/>"
+    let uninterestingText = many (noneOf "<>") 
+    slashOrBracket <- oneOf "/>"
                       <?> "xmltagbegin slashorbracket, / or > for " ++ name
-    subtags <- case slashorbracket of '/' -> do
+    subtags <- case slashOrBracket of '/' -> do
                                              char '>'
                                              return []
                                       '>' -> do
-                                             uninterestingtext
-                                             manyTill (between spaces spaces $ xmlelement name)
-                                                      (xmltagend name)
+                                             uninterestingText
+                                             manyTill (between spaces spaces $ xmlElement name)
+                                                      (xmlTagEnd name)
     return $ XmlTag name params subtags
 
-xmlbegintag :: String -> GenParser Char st String
-xmlbegintag parent = do
+xmlBeginTag :: String -> GenParser Char st String
+xmlBeginTag parent = do
     try (char '<') 
         <?> "xmlbegintag < where parent is " ++ parent
-    let tagname = many1 $ noneOf (controlchars ++ " \n")
+    let tagname = many1 $ noneOf (controlChars ++ " \n")
     try tagname 
         <?> "xmlbegintag name, parent is " ++ parent 
 
-xmltagparam :: GenParser Char st XmlParamKey 
-xmltagparam = do
-    let namestring = many1 $ noneOf (controlchars ++ " \n")
-    name <- try namestring <?> "xmltagparam namestring" 
+xmlTagParam :: GenParser Char st XmlParamKey 
+xmlTagParam = do
+    let nameString = many1 $ noneOf (controlChars ++ " \n")
+    name <- try nameString <?> "xmltagparam namestring" 
     spaces
     try (char '=') <?> "xmltagparam ="
     spaces
     try (char '\"') <?> "xmltagparam first \""
-    let valuestring = many $ noneOf "\""
-    value <- try valuestring <?> "xmltagparam valuestring" 
+    let valueString = many $ noneOf "\""
+    value <- try valueString <?> "xmltagparam valuestring" 
     try (char '\"') <?> "xmltag last \""
     return (name, value)
 
-xmltagend :: String -> GenParser Char st String
-xmltagend name = do
+xmlTagEnd :: String -> GenParser Char st String
+xmlTagEnd name = do
     let symbol = "</" ++ name ++ ">"
     try (string symbol)
         <?> "xmltagend " ++ symbol
@@ -101,10 +97,7 @@ xmltagend name = do
     -- try (string ">") 
     --     <?> "xmltagend > for " ++ name
         
-controlchars = "<>=/" 
--- xmlregulartext = many $ noneOf "<"
-
--- xmlformatting = many $ oneOf " \n" 
+controlChars = "<>=/" 
      
 ----------------------------------------------
 text :: GenParser Char st String
@@ -205,6 +198,12 @@ parseSvg file = parse svgfile "(unkown)" file
 
 -----------------------------------------------------------
 
+mapToRectangle :: (Map.Map String String) -> Maybe (Rectangle Float) 
+mapToRectangle map = Rectangle <$> maybeCoord <*> maybeDim 
+    where readMap = (fmap read) . (\ x -> Map.lookup x map)
+          maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
+          maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
+
 rectchange :: (Rectangle Float) -> (Rectangle Int) -> (Rectangle Float) -> (Rectangle Int) 
 rectchange coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') 
     where (Rectangle (Coordinate oi oj) (Dimensions dimi dimj) ) = coord
@@ -218,7 +217,7 @@ rectchange coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions hei
           j' = floor $ (fromIntegral oj') + (j - oj) * jscale 
 
 viewboxtorect :: SvgElement -> Rectangle Float 
-viewboxtorect (ViewBox (Coordinate i1 j1) (Coordinate i2 j2)) = 
+viewboxtorect (ViewBox (Coordinate j1 i1) (Coordinate j2 i2)) = 
     Rectangle (Coordinate i1 j1) (Dimensions (i2 - i1) (j2 - j1)) 
 
 svgrecttorect:: SvgElement -> Rectangle Float

@@ -10,21 +10,39 @@ main = do
   handle <- openFile "example.svg" ReadMode
   contents <- hGetContents handle
   let xmltags = parseXml contents
-  putStrLn "The Xml tags are"
-  print xmltags
-  let xmldict = do
-                results <- xmltags
-                return $ map (fmap Map.fromList)  results 
-  putStrLn "Parameters as dictionaries: "
-  print xmldict
+      eitherXmlSvg = head `fmap` xmltags
+      eitherXmlFiltered = do
+                              xmlSvg <- eitherXmlSvg
+                              let (XmlTag name ps subs) = xmlSvg
+                                  subs' = filter (\ (XmlTag n _ _) -> n `elem` ["rect"]) subs
+                                  xmlSvg' = XmlTag name ps subs'
+                              let xmlSvg'' = (filter interestingP) `fmap` xmlSvg'
+                                  interestingP (key, value) = key `elem` ["x","y","height","width"] 
+                              return xmlSvg''
+
+  let eitherXmlDict = do
+                xmlFiltered <- eitherXmlFiltered
+                return $ Map.fromList `fmap` xmlFiltered 
+
+  let eitherRects = do
+                    xmlDict <- eitherXmlDict
+                    let (XmlTag _ _ subs) = xmlDict
+                        rects = map (\ (XmlTag _ ps _) -> mapToRectangle ps) subs 
+                        justsFilter (Just x) = True
+                        justsFilter Nothing = False
+                        rects' = filter justsFilter rects 
+                    return $ map (\ (Just x) -> SvgRectangle x) rects'
+  putStrLn "eitherRects = "
+  print eitherRects 
+                        
 
   let svgelems = parseSvg contents
   putStrLn "svgelems = "
   print svgelems
-  let rectlist = drop 1 `fmap` svgelems
-      vbox = head `fmap` svgelems
-  putStrLn "After dropping first element, rectlist= "
-  print rectlist 
+  --rectlist = drop 1 `fmap` svgelems
+  let vbox = head `fmap` svgelems
+  -- putStrLn "After dropping first element, rectlist= "
+  -- print rectlist 
   putStrLn "The viewbox = "
   print vbox 
   let coord = viewboxtorect `fmap` vbox
@@ -33,7 +51,7 @@ main = do
       width' = 80
   putStrLn "After converting from viewbox to rectangle, we have"
   print coord 
-  let newrectlist = rectlist >>= mapM (\x -> rectchange <$> coord <*> Right coord' <*> conversionmap x) 
+  let newrectlist = eitherRects >>= mapM (\x -> rectchange <$> coord <*> Right coord' <*> conversionmap x) 
       conversionmap = Right . svgrecttorect 
   putStrLn "After coordinate conversion, the rectange list = "
   print newrectlist
