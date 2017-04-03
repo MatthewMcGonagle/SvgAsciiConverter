@@ -9,6 +9,7 @@ module SvgAsciiConverter
 , parseXml
 , parseVBoxParameters
 , mapToRectangle
+, mapInterestingToRectangle
 , rectFloatToInt
 , drawRectInt
 , drawsegmentrow
@@ -21,7 +22,10 @@ data Coordinate t = Coordinate t t deriving (Show)
 data Dimensions t = Dimensions t t deriving (Show)
 data Painter = Painter Char
 data AsciiPicture = AsciiPicture [[Char]]
-data Rectangle spaceT = Rectangle (Coordinate spaceT) (Dimensions spaceT) deriving (Show)
+data Rectangle spaceT propertyT = Rectangle (Coordinate spaceT) 
+                                            (Dimensions spaceT) 
+                                            propertyT
+                                            deriving (Show)
 
 data XmlTag paramType = XmlTag String paramType [XmlTag paramType] deriving (Show)
 type XmlParamKey = (String, String)
@@ -95,7 +99,7 @@ xmlHeader = do
 
 -----------------------------------------------------------
 
-vBoxParameters :: GenParser Char st (Rectangle Float) 
+vBoxParameters :: GenParser Char st (Rectangle Float ()) 
 vBoxParameters = do
                  spaces 
                  let numberString  = do
@@ -116,24 +120,48 @@ vBoxParameters = do
                  y2 <- number
                  let coord = Coordinate x1 y1
                      dim = Dimensions (y2 - y1) (x2 - x1)
-                 return $ Rectangle coord dim
+                 return $ Rectangle coord dim ()
                 
-parseVBoxParameters :: String -> Either ParseError (Rectangle Float)  
+parseVBoxParameters :: String -> Either ParseError (Rectangle Float ())  
 parseVBoxParameters input = parse vBoxParameters "(unknown)" input
+
+----------------------------------------------------------
+
+styleParamKey :: GenParser Char st (String, String)
+styleParamKey = do 
+    name <- many1 $ noneOf ":"
+    char ':'
+    value <- many $ noneOf ";"
+    return (name, value)
+
+parseStyleKeys :: String -> [(String, String)]
+parseStyleKeys params = case eitherPKeys of Right x -> x
+                                            Left y -> [] 
+    where eitherPKeys = parse (styleParamKey `sepBy` (char ';')) "(unknown)" params
 
 -----------------------------------------------------------
 
-mapToRectangle :: (Map.Map String String) -> Maybe (Rectangle Float) 
-mapToRectangle map = Rectangle <$> maybeCoord <*> maybeDim 
+mapToRectangle :: (Map.Map String String) -> Maybe (Rectangle Float (Map.Map String String)) 
+mapToRectangle map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleMap
     where readMap = (fmap read) . (\ x -> Map.lookup x map)
           maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
           maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
+          maybeStyleMap = Map.fromList . parseStyleKeys <$> Map.lookup "style" map 
 
-rectFloatToInt :: (Rectangle Float) -> (Rectangle Int) -> (Rectangle Float) -> (Rectangle Int) 
-rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') 
-    where (Rectangle (Coordinate oi oj) (Dimensions dimi dimj) ) = coord
-          (Rectangle (Coordinate oi' oj') (Dimensions dimi' dimj') ) = coord'
-          (Rectangle (Coordinate i j) (Dimensions height width)) = rectangle
+mapInterestingToRectangle :: [String] -> (Map.Map String String) -> Maybe (Rectangle Float (Map.Map String String))
+mapInterestingToRectangle words map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleMap
+    where readMap = (fmap read) . (\ x -> Map.lookup x map)
+          maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
+          maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
+          maybeStyleKeys = parseStyleKeys <$> Map.lookup "style" map 
+          maybeInterestingKeys = filter (\ (name, value) -> name `elem` words) <$> maybeStyleKeys
+          maybeStyleMap = Map.fromList <$> maybeInterestingKeys
+
+rectFloatToInt :: (Rectangle Float pT) -> (Rectangle Int pT') -> (Rectangle Float pT'') -> (Rectangle Int pT'') 
+rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') props 
+    where (Rectangle (Coordinate oi oj) (Dimensions dimi dimj) _ ) = coord
+          (Rectangle (Coordinate oi' oj') (Dimensions dimi' dimj') _ ) = coord'
+          (Rectangle (Coordinate i j) (Dimensions height width) props) = rectangle
           iscale = (fromIntegral dimi') / dimi
           jscale = (fromIntegral dimj') / dimj
           height' = floor $ height * iscale 
@@ -141,8 +169,8 @@ rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions
           i' = floor $ (fromIntegral oi') + (i - oi) * iscale
           j' = floor $ (fromIntegral oj') + (j - oj) * jscale 
 
-drawRectInt :: (Rectangle Int) -> Painter -> AsciiPicture -> AsciiPicture
-drawRectInt (Rectangle corner dim) p (AsciiPicture rows) = 
+drawRectInt :: (Rectangle Int pT) -> Painter -> AsciiPicture -> AsciiPicture
+drawRectInt (Rectangle corner dim _) p (AsciiPicture rows) = 
     AsciiPicture $ untouchedrows1 ++ paintedrows ++ untouchedrows2 
     where (Coordinate i j) = corner 
           (Dimensions dimi dimj) = dim 
