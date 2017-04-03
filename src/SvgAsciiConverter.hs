@@ -4,16 +4,13 @@ module SvgAsciiConverter
 , Rectangle(Rectangle)
 , Painter(Painter)
 , AsciiPicture(AsciiPicture)
-, SvgElement(ViewBox, SvgRectangle)
 , XmlParamKey
 , XmlTag(XmlTag) 
 , parseXml
-, parseSvg
+, parseVBoxParameters
 , mapToRectangle
-, rectchange
-, svgrecttorect
-, viewboxtorect
-, drawrectangle 
+, rectFloatToInt
+, drawRectInt
 , drawsegmentrow
 ) where
 
@@ -24,10 +21,7 @@ data Coordinate t = Coordinate t t deriving (Show)
 data Dimensions t = Dimensions t t deriving (Show)
 data Painter = Painter Char
 data AsciiPicture = AsciiPicture [[Char]]
-data Rectangle t = Rectangle (Coordinate t) (Dimensions t) deriving (Show)
-data SvgElement = ViewBox (Coordinate Float) (Coordinate Float)
-                | SvgRectangle (Rectangle Float) 
-                deriving (Show)
+data Rectangle spaceT = Rectangle (Coordinate spaceT) (Dimensions spaceT) deriving (Show)
 
 data XmlTag paramType = XmlTag String paramType [XmlTag paramType] deriving (Show)
 type XmlParamKey = (String, String)
@@ -42,7 +36,7 @@ parseXml x = parse xmlFile "xmlfile" x
 xmlFile :: GenParser Char st [XmlTag [XmlParamKey]]
 xmlFile = do
     spaces
-    (try xmlheader) <?> "xmlheader"
+    (try xmlHeader) <?> "xmlHeader"
     elements <- manyTill (between spaces spaces $ xmlElement "file") eof 
     return elements 
 
@@ -90,111 +84,42 @@ xmlTagEnd name = do
     let symbol = "</" ++ name ++ ">"
     try (string symbol)
         <?> "xmltagend " ++ symbol
-    -- try (string "</")
-    --     <?> "xmltagend </ for " ++ name
-    -- try (string name)
-    --     <?> "xmltagend identifier " ++ name
-    -- try (string ">") 
-    --     <?> "xmltagend > for " ++ name
-        
+       
 controlChars = "<>=/" 
      
-----------------------------------------------
-text :: GenParser Char st String
-text = many $ noneOf "<>"
-
-formatting = many $ oneOf " \n"
-endline = char '\n'
-
-xmlheader :: GenParser Char st String 
-xmlheader = do
+xmlHeader :: GenParser Char st String 
+xmlHeader = do
     string "<?xml"
     many $ noneOf "<>?"
     string "?>"
 
-viewboxparam :: GenParser Char st [Float]
-viewboxparam = do
-    numstrs <- (floatingnumber) `sepBy` (char ' ')
-    return $ map read numstrs
-    where floatingnumber = many1 $ noneOf " "
+-----------------------------------------------------------
 
-svgstart :: GenParser Char st SvgElement 
-svgstart = do
-    string "<svg"
-    endline
-    ps <- (spaces >> parameter) `sepBy` endline 
-    string ">"
-    let pdict = Map.fromList ps
-        Just vboxstring = Map.lookup "viewBox" pdict
-        Right [vbox1, vbox2, vbox3, vbox4] = parse viewboxparam "(unknown)" vboxstring
-        start = Coordinate vbox1 vbox2
-        end = Coordinate vbox3 vbox4  
-    return $ ViewBox start end 
-
-defs :: GenParser Char st String
-defs = do
-    string "<defs"
-    many $ noneOf "/>"
-    string "/>"
-
-metadatastart :: GenParser Char st String
-metadatastart = do
-    string "<metadata"
-    endline
-    text
-    string ">"
-
-metadata :: GenParser Char st String
-metadata = do
-    metadatastart
-    manyTill anyChar $ (try $ string "</metadata>")
-    return []
-    
-parameter :: GenParser Char st (String, String) 
-parameter = do
-    name <- many $ noneOf " =<>/"
-    spaces
-    char '='
-    spaces
-    char '\"'
-    value <- many $ noneOf "\""
-    char '\"'
-    return $ (name, value) 
-    
-    
-rect :: GenParser Char st SvgElement
-rect = do
-    string "<rect"
-    endline
-    ps <- (spaces >> parameter) `sepBy` endline 
-    spaces
-    string "/>"
-    let pdict = Map.fromList ps
-        Just x = Map.lookup "x" pdict
-        Just y = Map.lookup "y" pdict
-        Just height = Map.lookup "height" pdict
-        Just width = Map.lookup "width" pdict
-        corner = Coordinate (read y) (read x)
-        dim = Dimensions (read height) (read width)
-    return $ SvgRectangle (Rectangle corner dim)
-    
-    
-svgfile :: GenParser Char st [SvgElement]
-svgfile = do
-    xmlheader
-    formatting
-    viewbox <- svgstart
-    formatting 
-    defs
-    formatting
-    metadata >> endline
-    rectlist <- (spaces >> (try rect)) `endBy` endline
-    string "</svg>" >> endline
-    eof
-    return $ viewbox : rectlist 
-
-parseSvg :: String -> Either ParseError [SvgElement]
-parseSvg file = parse svgfile "(unkown)" file
+vBoxParameters :: GenParser Char st (Rectangle Float) 
+vBoxParameters = do
+                 spaces 
+                 let numberString  = do
+                                     sign <- string "-"
+                                             <|> return []
+                                     largedigits <- many $ oneOf "0123456789"
+                                     decimal <- string "."
+                                                <|> return []
+                                     smalldigits <- many $ oneOf "0123456789"
+                                     return $ sign ++ largedigits ++ decimal ++ smalldigits
+                     number = read `fmap` numberString
+                 x1 <- number
+                 spaces
+                 y1 <- number
+                 spaces
+                 x2 <- number
+                 spaces
+                 y2 <- number
+                 let coord = Coordinate x1 y1
+                     dim = Dimensions (y2 - y1) (x2 - x1)
+                 return $ Rectangle coord dim
+                
+parseVBoxParameters :: String -> Either ParseError (Rectangle Float)  
+parseVBoxParameters input = parse vBoxParameters "(unknown)" input
 
 -----------------------------------------------------------
 
@@ -204,8 +129,8 @@ mapToRectangle map = Rectangle <$> maybeCoord <*> maybeDim
           maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
           maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
 
-rectchange :: (Rectangle Float) -> (Rectangle Int) -> (Rectangle Float) -> (Rectangle Int) 
-rectchange coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') 
+rectFloatToInt :: (Rectangle Float) -> (Rectangle Int) -> (Rectangle Float) -> (Rectangle Int) 
+rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') 
     where (Rectangle (Coordinate oi oj) (Dimensions dimi dimj) ) = coord
           (Rectangle (Coordinate oi' oj') (Dimensions dimi' dimj') ) = coord'
           (Rectangle (Coordinate i j) (Dimensions height width)) = rectangle
@@ -216,15 +141,9 @@ rectchange coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions hei
           i' = floor $ (fromIntegral oi') + (i - oi) * iscale
           j' = floor $ (fromIntegral oj') + (j - oj) * jscale 
 
-viewboxtorect :: SvgElement -> Rectangle Float 
-viewboxtorect (ViewBox (Coordinate j1 i1) (Coordinate j2 i2)) = 
-    Rectangle (Coordinate i1 j1) (Dimensions (i2 - i1) (j2 - j1)) 
-
-svgrecttorect:: SvgElement -> Rectangle Float
-svgrecttorect (SvgRectangle r) = r
-
-drawrectangle :: (Rectangle Int) -> Painter -> AsciiPicture -> AsciiPicture
-drawrectangle (Rectangle corner dim) p (AsciiPicture rows) = AsciiPicture $ untouchedrows1 ++ paintedrows ++ untouchedrows2 
+drawRectInt :: (Rectangle Int) -> Painter -> AsciiPicture -> AsciiPicture
+drawRectInt (Rectangle corner dim) p (AsciiPicture rows) = 
+    AsciiPicture $ untouchedrows1 ++ paintedrows ++ untouchedrows2 
     where (Coordinate i j) = corner 
           (Dimensions dimi dimj) = dim 
           untouchedrows1 = take i rows 
