@@ -5,16 +5,13 @@ module SvgAsciiConverter
 , Painter(Painter)
 , AsciiPicture(AsciiPicture)
 , XmlParamKey
-, XmlTag(XmlTag) 
+, XmlTag(XmlTag, name, params, subs) 
 , parseXml
 , parseVBoxParameters
 , filterInterestingSubs
-, filterSubs
-, filterParams
 , mapParams
 , mapSubs
 , mapToMRectangleKeys
---, mapInterestingToRectangle
 , rectFloatToInt
 , drawRectInt
 , drawsegmentrow
@@ -24,16 +21,30 @@ import Text.ParserCombinators.Parsec
 import Control.Monad
 import qualified Data.Map as Map
 
-data Coordinate t = Coordinate t t deriving (Show)
-data Dimensions t = Dimensions t t deriving (Show)
+data Coordinate t = Coordinate 
+    { x :: t
+    , y :: t
+    } deriving (Show)
+
+data Dimensions t = Dimensions 
+    { dimx :: t
+    , dimy :: t
+    } deriving (Show)
+
 data Painter = Painter Char
 data AsciiPicture = AsciiPicture [[Char]]
-data Rectangle spaceT propertyT = Rectangle (Coordinate spaceT) 
-                                            (Dimensions spaceT) 
-                                            propertyT
-                                            deriving (Show)
+data Rectangle spaceT propertyT = Rectangle 
+    { coord :: Coordinate spaceT 
+    , dim   :: Dimensions spaceT 
+    , prop  :: propertyT
+    } deriving (Show)
 
-data XmlTag paramType = XmlTag String paramType [XmlTag paramType] deriving (Show)
+data XmlTag paramType = XmlTag 
+    { name   :: String 
+    , params :: paramType 
+    , subs   :: [XmlTag paramType] 
+    } deriving (Show)
+
 type XmlParamKey = (String, String)
 
 instance Functor XmlTag where
@@ -157,17 +168,11 @@ filterInterestingSubs paramIsInteresting subIsInteresting (XmlTag name params su
     $ subs 
     where paramFilter (XmlTag n p s) = XmlTag n (filter paramIsInteresting p) s
 
-filterSubs :: (XmlTag paramType -> Bool) -> XmlTag paramType -> XmlTag paramType
-filterSubs f (XmlTag name params subs) = XmlTag name params $ filter f subs 
-
-filterParams :: (paramType -> Bool) -> XmlTag [paramType] -> XmlTag [paramType]
-filterParams f (XmlTag name params subs) = XmlTag name (filter f params) subs
-
 mapParams :: (paramType -> paramType) -> XmlTag paramType -> XmlTag paramType
 mapParams f (XmlTag name params subs) = XmlTag name (f params) subs
 
-mapSubs :: (XmlTag paramType -> outputT) -> XmlTag paramType -> [outputT] 
-mapSubs f (XmlTag name params subs) = map f subs
+mapSubs :: (XmlTag paramType -> XmlTag paramType) -> XmlTag paramType -> XmlTag paramType 
+mapSubs f (XmlTag name params subs) = XmlTag name params (map f subs)
  
 mapToMRectangleKeys :: (Map.Map String String) -> Maybe (Rectangle Float [(String, String)]) 
 mapToMRectangleKeys map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleKeys
@@ -178,15 +183,6 @@ mapToMRectangleKeys map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleKe
           mmKeys = (eitherToMaybe . parseStyleKeys) `fmap` (Map.lookup "style" map)
           eitherToMaybe x = case x of Left error -> Nothing
                                       Right y -> Just y
-
--- mapInterestingToRectangle :: [String] -> (Map.Map String String) -> Maybe (Rectangle Float (Map.Map String String))
--- mapInterestingToRectangle words map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleMap
---     where readMap = (fmap read) . (\ x -> Map.lookup x map)
---           maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
---           maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
---           maybeStyleKeys = parseStyleKeys <$> Map.lookup "style" map 
---           maybeInterestingKeys = filter (\ (name, value) -> name `elem` words) <$> maybeStyleKeys
---           maybeStyleMap = Map.fromList <$> maybeInterestingKeys
 
 rectFloatToInt :: (Rectangle Float pT) -> (Rectangle Int pT') -> (Rectangle Float pT'') -> (Rectangle Int pT'') 
 rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') props 

@@ -17,7 +17,7 @@ main = do
 
   let (Right xml) = eitherXml
       xmlSvg = head xml
-      (XmlTag name ps subs) = xmlSvg
+      (XmlTag name ps subs') = xmlSvg
       maybeVBoxPString = Map.lookup "viewBox" (Map.fromList ps) 
   case maybeVBoxPString of Nothing -> error "viewBox parameter not found"
                            otherwise -> return ()
@@ -40,7 +40,7 @@ main = do
                 rectangleInteresting = (filter interestingStyle) `fmap` rectangleKeys
                 rectangleDict = Map.fromList `fmap` rectangleInteresting
             return rectangleDict
-      maybeRects = mapSubs xmlDictToMRectangle xmlDict
+      maybeRects = map xmlDictToMRectangle (subs xmlDict)
       justsFilter (Just x) = True
       justsFilter Nothing = False
       filteredRects = filter justsFilter maybeRects 
