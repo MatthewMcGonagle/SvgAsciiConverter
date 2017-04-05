@@ -8,14 +8,20 @@ module SvgAsciiConverter
 , XmlTag(XmlTag) 
 , parseXml
 , parseVBoxParameters
-, mapToRectangle
-, mapInterestingToRectangle
+, filterInterestingSubs
+, filterSubs
+, filterParams
+, mapParams
+, mapSubs
+, mapToMRectangleKeys
+--, mapInterestingToRectangle
 , rectFloatToInt
 , drawRectInt
 , drawsegmentrow
 ) where
 
 import Text.ParserCombinators.Parsec
+import Control.Monad
 import qualified Data.Map as Map
 
 data Coordinate t = Coordinate t t deriving (Show)
@@ -31,8 +37,10 @@ data XmlTag paramType = XmlTag String paramType [XmlTag paramType] deriving (Sho
 type XmlParamKey = (String, String)
 
 instance Functor XmlTag where
-    fmap f (XmlTag name x []) = XmlTag name (f x) []
     fmap f (XmlTag name x subs) = XmlTag name (f x) (map (fmap f) subs) 
+
+instance Functor (Rectangle spaceT) where
+    fmap f (Rectangle coord dim prop) = Rectangle coord dim (f prop)
 
 parseXml :: String -> Either ParseError [XmlTag [XmlParamKey]] 
 parseXml x = parse xmlFile "xmlfile" x
@@ -134,28 +142,51 @@ styleParamKey = do
     value <- many $ noneOf ";"
     return (name, value)
 
-parseStyleKeys :: String -> [(String, String)]
-parseStyleKeys params = case eitherPKeys of Right x -> x
-                                            Left y -> [] 
-    where eitherPKeys = parse (styleParamKey `sepBy` (char ';')) "(unknown)" params
+styleParamKeyList = styleParamKey `sepBy` (char ';')
+
+parseStyleKeys :: String -> Either ParseError [(String, String)]
+parseStyleKeys params = parse styleParamKeyList "(unknown)" params
 
 -----------------------------------------------------------
 
-mapToRectangle :: (Map.Map String String) -> Maybe (Rectangle Float (Map.Map String String)) 
-mapToRectangle map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleMap
-    where readMap = (fmap read) . (\ x -> Map.lookup x map)
-          maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
-          maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
-          maybeStyleMap = Map.fromList . parseStyleKeys <$> Map.lookup "style" map 
+filterInterestingSubs :: (paramType -> Bool) -> ((XmlTag [paramType]) -> Bool) -> XmlTag [paramType] -> XmlTag [paramType]
+filterInterestingSubs paramIsInteresting subIsInteresting (XmlTag name params subs) = 
+    (XmlTag name params) 
+    . (map paramFilter)
+    . (filter subIsInteresting)
+    $ subs 
+    where paramFilter (XmlTag n p s) = XmlTag n (filter paramIsInteresting p) s
 
-mapInterestingToRectangle :: [String] -> (Map.Map String String) -> Maybe (Rectangle Float (Map.Map String String))
-mapInterestingToRectangle words map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleMap
+filterSubs :: (XmlTag paramType -> Bool) -> XmlTag paramType -> XmlTag paramType
+filterSubs f (XmlTag name params subs) = XmlTag name params $ filter f subs 
+
+filterParams :: (paramType -> Bool) -> XmlTag [paramType] -> XmlTag [paramType]
+filterParams f (XmlTag name params subs) = XmlTag name (filter f params) subs
+
+mapParams :: (paramType -> paramType) -> XmlTag paramType -> XmlTag paramType
+mapParams f (XmlTag name params subs) = XmlTag name (f params) subs
+
+mapSubs :: (XmlTag paramType -> outputT) -> XmlTag paramType -> [outputT] 
+mapSubs f (XmlTag name params subs) = map f subs
+ 
+mapToMRectangleKeys :: (Map.Map String String) -> Maybe (Rectangle Float [(String, String)]) 
+mapToMRectangleKeys map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleKeys
     where readMap = (fmap read) . (\ x -> Map.lookup x map)
           maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
           maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
-          maybeStyleKeys = parseStyleKeys <$> Map.lookup "style" map 
-          maybeInterestingKeys = filter (\ (name, value) -> name `elem` words) <$> maybeStyleKeys
-          maybeStyleMap = Map.fromList <$> maybeInterestingKeys
+          maybeStyleKeys = join mmKeys 
+          mmKeys = (eitherToMaybe . parseStyleKeys) `fmap` (Map.lookup "style" map)
+          eitherToMaybe x = case x of Left error -> Nothing
+                                      Right y -> Just y
+
+-- mapInterestingToRectangle :: [String] -> (Map.Map String String) -> Maybe (Rectangle Float (Map.Map String String))
+-- mapInterestingToRectangle words map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleMap
+--     where readMap = (fmap read) . (\ x -> Map.lookup x map)
+--           maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
+--           maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
+--           maybeStyleKeys = parseStyleKeys <$> Map.lookup "style" map 
+--           maybeInterestingKeys = filter (\ (name, value) -> name `elem` words) <$> maybeStyleKeys
+--           maybeStyleMap = Map.fromList <$> maybeInterestingKeys
 
 rectFloatToInt :: (Rectangle Float pT) -> (Rectangle Int pT') -> (Rectangle Float pT'') -> (Rectangle Int pT'') 
 rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') props 

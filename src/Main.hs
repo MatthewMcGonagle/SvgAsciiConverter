@@ -18,8 +18,7 @@ main = do
   let (Right xml) = eitherXml
       xmlSvg = head xml
       (XmlTag name ps subs) = xmlSvg
-      pMap = Map.fromList ps
-      maybeVBoxPString = Map.lookup "viewBox" pMap
+      maybeVBoxPString = Map.lookup "viewBox" (Map.fromList ps) 
   case maybeVBoxPString of Nothing -> error "viewBox parameter not found"
                            otherwise -> return ()
 
@@ -28,24 +27,26 @@ main = do
 
   case eitherVBox of Left parseError -> error (show parseError)
                      otherwise -> return ()
+
   let (Right vBox) = eitherVBox
-      subs' = filter (\ (XmlTag n _ _) -> n `elem` ["rect"]) 
-                     subs
-      xmlSvg' = XmlTag name ps subs'
-      interestingP (key, value) = key `elem` ["x", "y", "height", "width", "style"] 
-      xmlFiltered = (filter interestingP) `fmap` xmlSvg'
+      subIsInteresting (XmlTag n _ _) = n `elem` ["rect"]
+      pIsInteresting (x, y) = x `elem` ["x", "y", "height", "width", "style"] 
+      xmlFiltered = filterInterestingSubs pIsInteresting subIsInteresting xmlSvg
       xmlDict = Map.fromList `fmap` xmlFiltered 
       
-  let (XmlTag _ _ subs) = xmlDict
-      interestingStyleKeys = ["fill"]
-      maybeRects = map (\ (XmlTag _ ps _) -> mapInterestingToRectangle interestingStyleKeys ps) 
-                   subs 
+      xmlDictToMRectangle (XmlTag _ dict _) = do
+            rectangleKeys <- mapToMRectangleKeys dict
+            let interestingStyle (k, v) = k `elem` ["fill"]
+                rectangleInteresting = (filter interestingStyle) `fmap` rectangleKeys
+                rectangleDict = Map.fromList `fmap` rectangleInteresting
+            return rectangleDict
+      maybeRects = mapSubs xmlDictToMRectangle xmlDict
       justsFilter (Just x) = True
       justsFilter Nothing = False
       filteredRects = filter justsFilter maybeRects 
       rects = map (\ (Just x) -> x) filteredRects 
 
-  let coord' = Rectangle (Coordinate 0 0) (Dimensions height' width') ()
+      coord' = Rectangle (Coordinate 0 0) (Dimensions height' width') ()
       height' = 60
       width' = 100
       rectMap x = rectFloatToInt vBox coord' x
