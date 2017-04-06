@@ -12,7 +12,6 @@ module SvgAsciiConverter
 , filterInterestingSubs
 , mapParams
 , mapSubs
-, mapToMRectangleKeys
 , mapToMRectangle
 , rectFloatToInt
 , drawRectInt
@@ -176,16 +175,6 @@ mapParams f (XmlTag name params subs) = XmlTag name (f params) subs
 mapSubs :: (XmlTag paramType -> XmlTag paramType) -> XmlTag paramType -> XmlTag paramType 
 mapSubs f (XmlTag name params subs) = XmlTag name params (map f subs)
  
-mapToMRectangleKeys :: (Map.Map String String) -> Maybe (Rectangle Float [(String, String)]) 
-mapToMRectangleKeys map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleKeys
-    where readMap = (fmap read) . (\ x -> Map.lookup x map)
-          maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
-          maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
-          maybeStyleKeys = join mmKeys 
-          mmKeys = (eitherToMaybe . parseStyleKeys) `fmap` (Map.lookup "style" map)
-          eitherToMaybe x = case x of Left error -> Nothing
-                                      Right y -> Just y
-
 mapToMRectangle :: (Map.Map String String) -> Maybe (Rectangle Float ())
 mapToMRectangle map = Rectangle <$> maybeCoord <*> maybeDim <*> return () 
     where readMap = (fmap read) . (\ x -> Map.lookup x map)
