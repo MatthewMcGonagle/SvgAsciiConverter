@@ -8,10 +8,12 @@ module SvgAsciiConverter
 , XmlTag(XmlTag, name, params, subs) 
 , parseXml
 , parseVBoxParameters
+, parseStyleKeys
 , filterInterestingSubs
 , mapParams
 , mapSubs
 , mapToMRectangleKeys
+, mapToMRectangle
 , rectFloatToInt
 , drawRectInt
 , drawsegmentrow
@@ -183,6 +185,13 @@ mapToMRectangleKeys map = Rectangle <$> maybeCoord <*> maybeDim <*> maybeStyleKe
           mmKeys = (eitherToMaybe . parseStyleKeys) `fmap` (Map.lookup "style" map)
           eitherToMaybe x = case x of Left error -> Nothing
                                       Right y -> Just y
+
+mapToMRectangle :: (Map.Map String String) -> Maybe (Rectangle Float ())
+mapToMRectangle map = Rectangle <$> maybeCoord <*> maybeDim <*> return () 
+    where readMap = (fmap read) . (\ x -> Map.lookup x map)
+          maybeCoord = Coordinate <$> readMap "y" <*> readMap "x"
+          maybeDim = Dimensions <$> readMap "height" <*> readMap "width"
+
 
 rectFloatToInt :: (Rectangle Float pT) -> (Rectangle Int pT') -> (Rectangle Float pT'') -> (Rectangle Int pT'') 
 rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions height' width') props 

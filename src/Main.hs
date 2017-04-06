@@ -4,6 +4,7 @@ import SvgAsciiConverter
 import System.IO
 import Control.Monad
 import qualified Data.Map as Map
+import qualified Data.List as List
 import Text.ParserCombinators.Parsec
 
 main :: IO ()
@@ -11,30 +12,41 @@ main = do
   handle <- openFile "example.svg" ReadMode
   contents <- hGetContents handle
 
-  let eitherXml = parseXml contents
-  case eitherXml of Left parseError -> error (show parseError) 
-                    otherwise -> return ()
+  xml <- case parseXml contents 
+        of Left parseError -> error (show parseError) 
+           Right x -> return x 
 
-  let (Right xml) = eitherXml
-      xmlSvg = head xml
-      (XmlTag name ps subs') = xmlSvg
-      maybeVBoxPString = Map.lookup "viewBox" (Map.fromList ps) 
-  case maybeVBoxPString of Nothing -> error "viewBox parameter not found"
-                           otherwise -> return ()
+  xmlSvg <- case List.find (\ x -> name x `elem` ["svg"]) xml
+        of Nothing -> error "Couldn't find svg tag in list of tags"
+           Just x -> return x
 
-  let (Just vBoxString) = maybeVBoxPString
-      eitherVBox = parseVBoxParameters vBoxString 
+  vBoxString <- case Map.lookup "viewBox" (Map.fromList $ params xmlSvg) 
+        of Nothing -> error "viewBox parameter not found"
+           Just x -> return x
 
-  case eitherVBox of Left parseError -> error (show parseError)
-                     otherwise -> return ()
+  vBox <- case parseVBoxParameters vBoxString 
+        of Left parseError -> error (show parseError)
+           Right x -> return x 
 
-  let (Right vBox) = eitherVBox
-      subIsInteresting (XmlTag n _ _) = n `elem` ["rect"]
-      pIsInteresting (x, y) = x `elem` ["x", "y", "height", "width", "style"] 
-      xmlFiltered = filterInterestingSubs pIsInteresting subIsInteresting xmlSvg
-      xmlDict = Map.fromList `fmap` xmlFiltered 
-      
-      xmlDictToMRectangle (XmlTag _ dict _) = do
+  let xmlDict = xmlDict' 
+        { subs = map removeUninterestingP subs'}  
+        where xmlDict' = Map.fromList `fmap` xmlSvg
+              removeUninterestingP x = x 
+                                       { params = Map.filterWithKey pIsInteresting (params x) 
+                                       } 
+              pIsInteresting k v = k `elem` ["x", "y", "height","width", "style"] 
+              subs' = filter (\ x -> name x `elem` ["rect"]) $ subs xmlDict'
+              tagIsInteresting x = name x `elem` ["rect"]
+  
+  let mRectList = do
+        let getParameterlessMRect = mapToMRectangle . params
+            getMStyle = Map.lookup "style" 
+            getMKeys x = case parseStyleKeys x 
+                    of Left error -> Nothing
+                       Right y -> Just y 
+        mapM getParameterlessMRect (subs xmlDict) 
+
+  let xmlDictToMRectangle (XmlTag _ dict _) = do
             rectangleKeys <- mapToMRectangleKeys dict
             let interestingStyle (k, v) = k `elem` ["fill"]
                 rectangleInteresting = (filter interestingStyle) `fmap` rectangleKeys
