@@ -45,9 +45,9 @@ main = do
             styleKeys <- case parseStyleKeys styles
                     of Left error -> Nothing
                        Right x -> Just x
-            let styleMap = Map.fromList styleKeys
-            fillstyle <- Map.lookup "fill" styleMap 
-            return $ (\_ -> fillstyle) `fmap` plessRect
+            let interestingStyle k v = k `elem` ["fill"]
+                styleMap = Map.filterWithKey interestingStyle $ Map.fromList styleKeys
+            return $ (\_ -> styleMap) `fmap` plessRect
      
   rectList <- case mapM getMRect (subs xmlDict) of
     Nothing -> error "Problem turning parameter maps into rectangles" 
