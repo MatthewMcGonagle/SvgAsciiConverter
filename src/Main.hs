@@ -9,7 +9,7 @@ import Text.ParserCombinators.Parsec
 
 main :: IO ()
 main = do
-  handle <- openFile "example.svg" ReadMode
+  handle <- openFile "HaskellLogo.svg" ReadMode
   contents <- hGetContents handle
 
   xml <- case parseXml contents 
@@ -54,8 +54,8 @@ main = do
     Just x -> return x 
                
   let coord' = Rectangle (Coordinate 0 0) (Dimensions height' width') ()
-      height' = 60
-      width' = 100
+      height' = 80
+      width' = 120
       rectMap x = rectFloatToInt vBox coord' x
       rectInts = map rectMap rectList 
 
