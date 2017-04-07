@@ -1,20 +1,22 @@
 module SvgAsciiConverter
 ( Coordinate(Coordinate)
 , Dimensions(Dimensions)
-, Rectangle(Rectangle)
+, Rectangle(Rectangle, coord, dim, prop)
 , Painter(Painter)
 , AsciiPicture(AsciiPicture)
 , XmlParamKey
 , XmlTag(XmlTag, name, params, subs) 
+, RGB(RGB)
 , parseXml
 , parseVBoxParameters
+, parseRGB
 , parseStyleKeys
 , filterInterestingSubs
 , mapParams
 , mapSubs
 , mapToMRectangle
 , rectFloatToInt
-, drawRectInt
+, fillRectInt
 , drawsegmentrow
 ) where
 
@@ -32,7 +34,12 @@ data Dimensions t = Dimensions
     , dimy :: t
     } deriving (Show)
 
-data Painter = Painter Char
+data Painter rgbType = Painter
+    { backgroundColor :: Char
+    , unknownColor :: Char
+    , colormap :: RGB rgbType -> Char
+    }
+ 
 data AsciiPicture = AsciiPicture [[Char]]
 data Rectangle spaceT propertyT = Rectangle 
     { coord :: Coordinate spaceT 
@@ -48,11 +55,24 @@ data XmlTag paramType = XmlTag
 
 type XmlParamKey = (String, String)
 
+data RGB valueT = RGB
+    { red :: valueT
+    , green :: valueT
+    , blue :: valueT
+    }
+
 instance Functor XmlTag where
     fmap f (XmlTag name x subs) = XmlTag name (f x) (map (fmap f) subs) 
 
 instance Functor (Rectangle spaceT) where
     fmap f (Rectangle coord dim prop) = Rectangle coord dim (f prop)
+
+instance Functor RGB where
+    fmap f x = RGB 
+               { red = f . red $ x
+               , green = f . green $ x
+               , blue = f . blue $ x
+               }
 
 parseXml :: String -> Either ParseError [XmlTag [XmlParamKey]] 
 parseXml x = parse xmlFile "xmlfile" x
@@ -145,6 +165,24 @@ vBoxParameters = do
 parseVBoxParameters :: String -> Either ParseError (Rectangle Float ())  
 parseVBoxParameters input = parse vBoxParameters "(unknown)" input
 
+---------------------------------------------------------
+
+rgb :: GenParser Char st (RGB String)
+rgb = do
+      char '#'
+      hexes <- count 3 rgbHexes
+      eof
+      let result = RGB 
+             { red = hexes !! 0
+             , green = hexes !! 1
+             , blue = hexes !! 2
+             } 
+      return result
+
+rgbHexes = count 2 $ oneOf "0123456789ABCDEF"
+
+parseRGB input = parse rgb "RGB" input 
+
 ----------------------------------------------------------
 
 styleParamKey :: GenParser Char st (String, String)
@@ -194,8 +232,8 @@ rectFloatToInt coord coord' rectangle = Rectangle (Coordinate i' j') (Dimensions
           i' = floor $ (fromIntegral oi') + (i - oi) * iscale
           j' = floor $ (fromIntegral oj') + (j - oj) * jscale 
 
-drawRectInt :: (Rectangle Int pT) -> Painter -> AsciiPicture -> AsciiPicture
-drawRectInt (Rectangle corner dim _) p (AsciiPicture rows) = 
+fillRectInt :: (Rectangle Int pT) -> Char -> AsciiPicture -> AsciiPicture
+fillRectInt (Rectangle corner dim _) p (AsciiPicture rows) = 
     AsciiPicture $ untouchedrows1 ++ paintedrows ++ untouchedrows2 
     where (Coordinate i j) = corner 
           (Dimensions dimi dimj) = dim 
@@ -207,8 +245,8 @@ drawRectInt (Rectangle corner dim _) p (AsciiPicture rows) =
           paintedrows = map (drawsegmentrow j j' p) rowstochange
 
 -- Draws from position a to position b, not including b
-drawsegmentrow :: Int -> Int -> Painter -> [Char] -> [Char]
-drawsegmentrow a b (Painter p) row = unchanged1 ++ painted ++ unchanged2
+drawsegmentrow :: Int -> Int -> Char -> [Char] -> [Char]
+drawsegmentrow a b p row = unchanged1 ++ painted ++ unchanged2
     where unchanged1 = take a row
           restofrow = drop a row
           painted = take (b - a) $ repeat p

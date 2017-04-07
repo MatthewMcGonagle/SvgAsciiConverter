@@ -65,8 +65,25 @@ main = do
   let canvas' = AsciiPicture asciiarray
         where asciiarray = take height' $ repeat asciirow
               asciirow = take width' $ repeat ' '
-      pictureMap = foldl (\acc x -> drawRectInt x (Painter '*') acc) canvas'
-      (AsciiPicture painting') = pictureMap rectInts 
+      mFillRectIntColor x y = do
+            hexRGB <- Map.lookup "fill" (prop x)
+            let rgbMap = Map.fromList [ ("#ff0000", 'R')
+                                      , ("#00ff00", '#')
+                                      , ("#0000ff", '/')
+                                      , ("#ffff00", '!')
+                                      , ("#ff00ff", '?')
+                                      ]
+                 
+                charColor = case Map.lookup hexRGB rgbMap of
+                        Nothing -> '*'
+                        Just x -> x 
+            return $ fillRectInt x charColor y
+      pictureMap = foldM (\acc x -> mFillRectIntColor x acc) canvas'
+
+  AsciiPicture painting' <- case pictureMap rectInts of
+        Nothing -> error "error filling rectangles"
+        Just x -> return x
+      
   mapM_ putStrLn painting'
 
   hClose handle
