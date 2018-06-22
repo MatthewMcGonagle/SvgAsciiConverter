@@ -7,7 +7,7 @@ final ASCII picture.
 The library currently supports the conversion of rectangles in the main layer of an .svg file. For example,
 consider the following .svg picture of the Haskell logo as rectangles:
 
-![HaskellLogo.svg](HasekellLogo.svg)
+![HaskellLogo.svg](HaskellLogo.svg)
 
 This can be turned into the following ASCII output:
 ```
